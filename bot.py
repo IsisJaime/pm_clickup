@@ -58,6 +58,44 @@ MOTIVATIONAL_MESSAGES = [
     "Aprovechen para estudiar algo nuevo hoy {star}",
 ]
 
+# GIFs por contexto
+GIFS = {
+    # Mañana tranquila, sin urgentes
+    "morning_calm": [
+        "https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif",   # Willy Wonka welcome
+        "https://media.giphy.com/media/3o7TKSjRrfIPjeiVyM/giphy.gif",   # Good morning sparkles
+        "https://media.giphy.com/media/xT9IgG50Lg7russbDa/giphy.gif",   # Stars shining
+    ],
+    # Mañana con tareas urgentes / vencidas
+    "morning_urgent": [
+        "https://media.giphy.com/media/l0HlBO7eyXzSZkJri/giphy.gif",    # Wake up!
+        "https://media.giphy.com/media/3o6Zt6ML6BklcajjsA/giphy.gif",   # Alarm fire
+        "https://media.giphy.com/media/xT9IgDECMFBzMsuDnW/giphy.gif",   # Urgente
+    ],
+    # Lunes (inicio de semana)
+    "morning_monday": [
+        "https://media.giphy.com/media/l0HlNQ03J5JxX6lva/giphy.gif",    # Monday motivation
+        "https://media.giphy.com/media/3o7TKMt1VVNkHV2PaE/giphy.gif",   # Let's go!
+        "https://media.giphy.com/media/xT9IgG50Lg7russbDa/giphy.gif",   # New week stars
+    ],
+    # Cierre tranquilo
+    "evening_calm": [
+        "https://media.giphy.com/media/l0HlNQ03J5JxX6lva/giphy.gif",    # Good night stars
+        "https://media.giphy.com/media/3o7TKMt1VVNkHV2PaE/giphy.gif",   # Evening sparkles
+        "https://media.giphy.com/media/xT9IgDECMFBzMsuDnW/giphy.gif",   # Night sky
+    ],
+    # Cierre con pendientes
+    "evening_pending": [
+        "https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif",    # Reminder
+        "https://media.giphy.com/media/3o6Zt6ML6BklcajjsA/giphy.gif",   # Don't forget
+        "https://media.giphy.com/media/l0HlBO7eyXzSZkJri/giphy.gif",    # Heads up
+    ],
+}
+
+def get_gif(context: str) -> str:
+    """Retorna un GIF aleatorio según el contexto"""
+    return random.choice(GIFS.get(context, GIFS["morning_calm"]))
+
 STUDY_PROMPTS = [
     "¿Ya revisaron documentación sobre {topic}?",
     "Tip: Este es buen momento para explorar {topic}",
@@ -330,8 +368,25 @@ class PMReporter:
         
         categories = self.categorize_tasks(all_tasks)
         
+        # Saludos estilo Willy Wonka
+        morning_greetings = [
+            f"🌟 <b>¡Buenos días, estrellitas!</b> ✨",
+            f"⭐ <b>¡Despierten, mis pequeñas estrellitas!</b> 🌟",
+            f"✨ <b>¡Buenos días a las estrellitas más brillantes del universo!</b> 🚀",
+            f"🌠 <b>¡Ah, mis queridas estrellitas han llegado!</b> ⭐",
+        ]
+
         # Construir mensaje
-        lines = [f"{EMOJIS['rocket']} <b>Buenos días equipo AIT!</b>"]
+        lines = [random.choice(morning_greetings)]
+
+        # GIF según contexto
+        if self.today.weekday() == 0:
+            gif_context = "morning_monday"
+        elif categories["overdue"] or categories["today"]:
+            gif_context = "morning_urgent"
+        else:
+            gif_context = "morning_calm"
+        lines.append(f'<a href="{get_gif(gif_context)}">​</a>')
         lines.append(f"📅 {self.today.strftime('%A %d de %B, %Y')}\n")
         
         has_urgent = False
@@ -395,7 +450,21 @@ class PMReporter:
         
         categories = self.categorize_tasks(all_tasks)
         
-        lines = [f"{EMOJIS['star']} <b>Check-in de cierre</b>"]
+        # Saludos de cierre estilo Willy Wonka
+        evening_greetings = [
+            f"🌙 <b>¡Y así termina otro día mágico, estrellitas!</b> ✨",
+            f"⭐ <b>¡Hora de cerrar, mis brillantes estrellitas!</b> 🌟",
+            f"🌠 <b>¡El día llega a su fin, queridas estrellitas!</b> 💫",
+        ]
+
+        lines = [random.choice(evening_greetings)]
+
+        # GIF según si hay pendientes o no
+        if categories["overdue"] or categories["today"]:
+            gif_context = "evening_pending"
+        else:
+            gif_context = "evening_calm"
+        lines.append(f'<a href="{get_gif(gif_context)}">​</a>')
         lines.append(f"🌅 {self.today.strftime('%A %d/%m')}\n")
         
         # Si hay tareas para mañana o próximas
@@ -437,9 +506,10 @@ class PMReporter:
         
         # Mensaje de cierre aleatorio
         closings = [
-            "¡Descansen y recarguen energía! 🌙",
-            "Mañana seguimos con todo 💪",
-            "¡Buen descanso equipo! ⭐",
+            "¡Descansen y recarguen su brillo, estrellitas! 🌙✨",
+            "Mañana volvemos a brillar juntas 💪⭐",
+            "¡Buen descanso, mis pequeñas estrellitas! 🌠",
+            "¡Hasta mañana, equipo de estrellas! 🚀🌟",
         ]
         lines.append(f"\n{random.choice(closings)}")
         
