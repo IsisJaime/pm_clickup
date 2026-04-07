@@ -22,6 +22,43 @@ Bot de Project Management para el equipo AIT de Grupo Salinas.
 
 ---
 
+## ⚙️ Cómo funciona
+
+### El flujo completo
+
+```
+GitHub (cron trigger)
+    → clona tu repo
+    → instala dependencias
+    → corre bot.py
+        → consulta ClickUp API
+        → genera análisis con Groq
+        → envía mensaje a Telegram
+```
+
+### GitHub Actions
+
+El archivo `.github/workflows/pm-bot.yml` es el "reloj" que ejecuta el bot automáticamente en la nube, sin que nadie tenga que correrlo manualmente:
+
+- GitHub tiene servidores que escuchan tu archivo `.yml`
+- El `cron` le dice cuándo ejecutarse: `30 15 * * 1-5` = 9:30 AM CDMX de lunes a viernes
+- Cuando llega la hora, GitHub levanta una máquina Ubuntu, instala Python, clona tu repo y corre `python bot.py`
+- Los **Secrets** son las contraseñas/tokens que el bot necesita, guardados de forma segura en GitHub, nunca en el código
+
+### Git (control de versiones)
+
+Cada vez que hagas cambios al bot, súbelos así:
+
+```bash
+git add .
+git commit -m "descripción del cambio"
+git push origin main
+```
+
+GitHub detecta el push y tu código queda actualizado. El workflow seguirá corriendo en los horarios configurados con la versión más reciente.
+
+---
+
 ## 🚀 Configuración
 
 ### 1. Crear Bot de Telegram
