@@ -561,9 +561,9 @@ class PMReporter:
         gif_context = "evening_pending" if (categories["overdue"] or categories["today"]) else "evening_calm"
 
         evening_greetings = [
-            "🌙 <b>¡Y así termina otro día mágico, estrellitas!</b> ✨",
-            "⭐ <b>¡Hora de cerrar, mis brillantes estrellitas!</b> 🌟",
-            "🌠 <b>¡El día llega a su fin, queridas estrellitas!</b> 💫",
+            "🌙 <b>¡Ya casí terminamos, estrellitas!</b> ✨",
+            "⭐ <b>¡Casi es hora de cerrar, mis brillantes estrellitas!</b> 🌟",
+            "🌠 <b>¡El día casi llega a su fin, queridas estrellitas!</b> 💫",
         ]
 
         dia = DIAS_ES[self.today.weekday()]
