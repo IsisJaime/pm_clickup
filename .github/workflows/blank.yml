@@ -2,8 +2,8 @@ name: ASORT PM Bot
 
 on:
   schedule:
-    # Cierre del día: 5:30 PM CDMX (UTC-6) = 23:30 UTC
-    - cron: '30 23 * * 1-5'
+    # 6:00 AM CDMX (UTC-6) = 12:00 UTC
+    - cron: '0 12 * * 1-5'
 
   workflow_dispatch:
     inputs:
