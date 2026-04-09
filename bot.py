@@ -22,6 +22,7 @@ CLICKUP_API_TOKEN = os.environ.get("CLICKUP_API_TOKEN")
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")  # Opcional para IA
+GIPHY_API_KEY = os.environ.get("GIPHY_API_KEY")  # Opcional para GIFs dinámicos
 
 # Space FrontEnd en ClickUp
 SPACE_ID = "901313702490"
@@ -99,6 +100,30 @@ GIFS = {
 }
 
 def get_gif(context: str) -> str:
+    """Busca un GIF en Giphy según contexto, con fallback a URLs estáticas"""
+    GIPHY_KEYWORDS = {
+        "morning_calm":   "good morning sparkle",
+        "morning_urgent": "wake up alarm",
+        "morning_monday": "monday motivation lets go",
+        "evening_calm":   "good night stars relax",
+        "evening_pending": "reminder dont forget",
+    }
+    if GIPHY_API_KEY:
+        keyword = GIPHY_KEYWORDS.get(context, "good morning")
+        try:
+            resp = requests.get(
+                "https://api.giphy.com/v1/gifs/search",
+                params={"api_key": GIPHY_API_KEY, "q": keyword, "limit": 10, "rating": "g"},
+                timeout=5
+            )
+            resp.raise_for_status()
+            results = resp.json().get("data", [])
+            if results:
+                gif = random.choice(results)
+                return gif["images"]["original"]["url"]
+        except Exception as e:
+            print(f"Giphy error: {e}")
+    # Fallback estático
     return random.choice(GIFS.get(context, GIFS["morning_calm"]))
 
 
@@ -473,15 +498,44 @@ class PMReporter:
         url = task.get("url", "")
         telegrams = self.get_assignee_telegram(task)
         telegram_str = " ".join(telegrams) if telegrams else ""
-        
+
         due_date = self.parse_due_date(task.get("due_date"))
         date_str = ""
         if include_date and due_date:
             date_str = f" ({due_date.strftime('%d/%m')})"
-        
+
         link = f'<a href="{url}">{name}</a>' if url else name
-        
+
         return f"• {link}{date_str} {telegram_str}"
+
+    def get_checklist_progress(self, task: dict) -> Optional[str]:
+        """Retorna el progreso de checklists de una tarea si tiene items pendientes"""
+        checklists = task.get("checklists", [])
+        if not checklists:
+            return None
+        total = 0
+        done = 0
+        pending_items = []
+        for cl in checklists:
+            for item in cl.get("items", []):
+                total += 1
+                if item.get("resolved"):
+                    done += 1
+                else:
+                    pending_items.append(item.get("name", ""))
+        if total == 0:
+            return None
+        pct = int((done / total) * 100)
+        bar_filled = int(pct / 10)
+        bar = "█" * bar_filled + "░" * (10 - bar_filled)
+        result = f"  📋 Checklist: {bar} {done}/{total} ({pct}%)"
+        # Mostrar hasta 3 items pendientes
+        if pending_items:
+            for item in pending_items[:3]:
+                result += f"\n    ○ {item}"
+            if len(pending_items) > 3:
+                result += f"\n    ... y {len(pending_items) - 3} más"
+        return result
     
     def generate_morning_report(self) -> str:
         """Genera el reporte de la mañana (9:30 AM)"""
@@ -602,37 +656,32 @@ class PMReporter:
         DIAS_ES = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
         MESES_ES = ["enero", "febrero", "marzo", "abril", "mayo", "junio",
                     "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
+        SEP = "─────────────────────"
 
         lists = self.clickup.get_space_lists(SPACE_ID)
         all_tasks = []
         for lst in lists:
             all_tasks.extend(self.clickup.get_tasks_by_list(lst["id"]))
 
-        # Filtrar solo tareas activas (no cerradas)
         closed_statuses = {"vobo edgar", "complete", "done", "cerrado", "closed"}
         active_tasks = [t for t in all_tasks if t.get("status", {}).get("status", "").lower() not in closed_statuses]
 
-        # Separar por estado
         def get_status(t): return t.get("status", {}).get("status", "").lower().strip()
         def get_due(t): return self.parse_due_date(t.get("due_date"))
         def days_until(t):
             due = get_due(t)
             return (due.date() - self.today).days if due else None
-        def telegrams_str(t):
+        def tg_str(t):
             tgs = self.get_assignee_telegram(t)
             return " ".join(tgs) if tgs else ""
 
-        tomorrow = self.today + timedelta(days=1)
-
-        # Agrupar por estado
-        en_desarrollo   = [t for t in active_tasks if get_status(t) == "en desarrollo"]
-        en_pausa        = [t for t in active_tasks if get_status(t) == "en pausa"]
-        en_pruebas      = [t for t in active_tasks if get_status(t) == "en pruebas"]
-        listo_liberar   = [t for t in active_tasks if get_status(t) == "listo para liberar"]
-        esp_revision    = [t for t in active_tasks if get_status(t) == "esperando revisión"]
-        vencidas        = [t for t in active_tasks if days_until(t) is not None and days_until(t) < 0]
-        manana          = [t for t in active_tasks if days_until(t) == 1]
-        proximas_48     = [t for t in active_tasks if days_until(t) is not None and 0 <= days_until(t) <= 2]
+        en_desarrollo = [t for t in active_tasks if get_status(t) == "en desarrollo"]
+        en_pausa      = [t for t in active_tasks if get_status(t) == "en pausa"]
+        en_pruebas    = [t for t in active_tasks if get_status(t) == "en pruebas"]
+        listo_liberar = [t for t in active_tasks if get_status(t) == "listo para liberar"]
+        esp_revision  = [t for t in active_tasks if get_status(t) == "esperando revisión"]
+        vencidas      = [t for t in active_tasks if days_until(t) is not None and days_until(t) < 0]
+        proximas_48   = [t for t in active_tasks if days_until(t) is not None and 0 <= days_until(t) <= 2]
 
         has_urgent = bool(vencidas or esp_revision)
         gif_context = "evening_pending" if has_urgent else "evening_calm"
@@ -647,91 +696,130 @@ class PMReporter:
         mes = MESES_ES[self.today.month - 1]
 
         lines = [random.choice(evening_greetings)]
-        lines.append(f"🌅 {dia} {self.today.day} de {mes}\n")
+        lines.append(f"📅 {dia} {self.today.day} de {mes}")
+        lines.append(SEP)
 
-        # ── EN DESARROLLO: si vence hoy o mañana, preguntar cómo va
+        any_section = False
+
+        # ── EN DESARROLLO urgente
         dev_urgentes = [t for t in en_desarrollo if days_until(t) is not None and days_until(t) <= 1]
         if dev_urgentes:
-            lines.append(f"🔵 <b>En desarrollo — ¿cómo vamos?</b>")
+            any_section = True
+            lines.append(f"\n🔵 <b>En desarrollo</b>")
             for t in dev_urgentes:
-                tg = telegrams_str(t)
+                tg = tg_str(t)
                 d = days_until(t)
-                cuando = "vence HOY" if d == 0 else "vence mañana"
-                lines.append(f"  • <i>{t.get('name','')}</i> ({cuando}) {tg}")
-                lines.append(f"    👉 {tg} ¿Cómo va esto? ¿Llegamos?")
-            lines.append("")
+                cuando = "vence HOY 🔥" if d == 0 else "vence mañana"
+                lines.append(f"\n  📌 <i>{t.get('name','')}</i>")
+                lines.append(f"  📆 {cuando}  |  👤 {tg}")
+                cl = self.get_checklist_progress(t)
+                if cl: lines.append(cl)
+                lines.append(f"  👉 ¿Cómo va esto? ¿Llegamos?")
+            lines.append(f"\n{SEP}")
 
-        # ── EN PAUSA: si ya llegó la fecha, solo registrar (no presionar)
+        # ── EN PAUSA con fecha vencida
         pausa_vencidas = [t for t in en_pausa if days_until(t) is not None and days_until(t) <= 0]
         if pausa_vencidas:
-            lines.append(f"🟡 <b>En pausa — fecha llegó, quedamos pendientes</b>")
+            any_section = True
+            lines.append(f"\n🟡 <b>En pausa</b> — fecha llegó, quedamos pendientes")
             for t in pausa_vencidas:
-                tg = telegrams_str(t)
-                lines.append(f"  • <i>{t.get('name','')}</i> {tg}")
-            lines.append("")
+                lines.append(f"\n  📌 <i>{t.get('name','')}</i>  |  👤 {tg_str(t)}")
+            lines.append(f"\n{SEP}")
 
-        # ── EN PRUEBAS: preguntar cómo van las pruebas
+        # ── EN PRUEBAS próximas
         pruebas_proximas = [t for t in en_pruebas if days_until(t) is not None and days_until(t) <= 2]
         if pruebas_proximas:
-            lines.append(f"🟣 <b>En pruebas — ¿cómo van?</b>")
+            any_section = True
+            lines.append(f"\n🟣 <b>En pruebas</b>")
             for t in pruebas_proximas:
-                tg = telegrams_str(t)
-                lines.append(f"  • <i>{t.get('name','')}</i> {tg}")
-                lines.append(f"    👉 {tg} ¿Las pruebas van bien? ¿Algún blocker?")
-            lines.append("")
+                tg = tg_str(t)
+                lines.append(f"\n  📌 <i>{t.get('name','')}</i>  |  👤 {tg}")
+                cl = self.get_checklist_progress(t)
+                if cl: lines.append(cl)
+                lines.append(f"  👉 ¿Las pruebas van bien? ¿Algún blocker?")
+            lines.append(f"\n{SEP}")
 
-        # ── LISTO PARA LIBERAR: preguntar si ya se avisó a Edgar
+        # ── LISTO PARA LIBERAR
         if listo_liberar:
-            lines.append(f"🟢 <b>Listo para liberar — ¿ya avisamos a Edgar?</b>")
+            any_section = True
+            lines.append(f"\n🟢 <b>Listo para liberar</b>")
             for t in listo_liberar:
-                tg = telegrams_str(t)
-                lines.append(f"  • <i>{t.get('name','')}</i> {tg}")
-                lines.append(f"    👉 {tg} ¿Ya tienen todo listo? ¿Ya se le notificó a Edgar?")
-            lines.append("")
+                tg = tg_str(t)
+                lines.append(f"\n  📌 <i>{t.get('name','')}</i>  |  👤 {tg}")
+                cl = self.get_checklist_progress(t)
+                if cl: lines.append(cl)
+                lines.append(f"  👉 ¿Ya tienen todo listo? ¿Ya se le notificó a Edgar?")
+            lines.append(f"\n{SEP}")
 
-        # ── ESPERANDO REVISIÓN: si ya pasó o está cerca, preguntar si ya se contactó + tácticas
+        # ── ESPERANDO REVISIÓN + tácticas Groq
         esp_urgentes = [t for t in esp_revision if days_until(t) is not None and days_until(t) <= 2]
         if esp_urgentes:
-            lines.append(f"🟠 <b>Esperando revisión — ¿ya nos acercamos?</b>")
+            any_section = True
+            lines.append(f"\n🟠 <b>Esperando revisión</b>")
             for t in esp_urgentes:
-                tg = telegrams_str(t)
+                tg = tg_str(t)
                 d = days_until(t)
-                cuando = "VENCIDA" if d < 0 else ("vence HOY" if d == 0 else "vence mañana")
-                lines.append(f"  • <i>{t.get('name','')}</i> ({cuando}) {tg}")
-                lines.append(f"    👉 {tg} ¿Ya se contactó a la persona que debe revisar esto?")
-                # Tácticas de escalación con Groq
+                cuando = "⚠️ VENCIDA" if d < 0 else ("🔥 vence HOY" if d == 0 else "vence mañana")
+                lines.append(f"\n  📌 <i>{t.get('name','')}</i>")
+                lines.append(f"  � {cuando}  |  👤 {tg}")
+                lines.append(f"  👉 ¿Ya se contactó a quien debe revisar esto?")
                 if self.ai:
                     tactics = self.ai.suggest_escalation(t.get('name',''), abs(d) if d < 0 else 0)
                     if tactics:
-                        lines.append(f"    💡 <i>{tactics}</i>")
-            lines.append("")
+                        lines.append(f"\n  💡 <b>Cómo acercarse:</b>")
+                        lines.append(f"  <i>{tactics}</i>")
+            lines.append(f"\n{SEP}")
 
-        # ── VENCIDAS: recordatorio diario + pregunta motivacional con Groq
+        # ── VENCIDAS + pregunta de blockers
         if vencidas:
-            lines.append(f"⚠️ <b>Vencidas — seguimiento diario</b>")
+            any_section = True
+            lines.append(f"\n⚠️ <b>Vencidas — seguimiento</b>")
             for t in vencidas[:4]:
-                tg = telegrams_str(t)
+                tg = tg_str(t)
                 d = abs(days_until(t))
-                lines.append(f"  • <i>{t.get('name','')}</i> — {d} día(s) vencida {tg}")
+                lines.append(f"\n  📌 <i>{t.get('name','')}</i>")
+                lines.append(f"  ⏱ {d} día(s) vencida  |  👤 {tg}")
+                cl = self.get_checklist_progress(t)
+                if cl: lines.append(cl)
                 if self.ai:
-                    motivation = self.ai.generate_motivation_blocker(t.get('name',''), tg)
-                    if motivation:
-                        lines.append(f"    � <i>{motivation}</i>")
-            lines.append("")
+                    msg = self.ai.generate_motivation_blocker(t.get('name',''), tg)
+                    if msg:
+                        lines.append(f"  💬 <i>{msg}</i>")
+            lines.append(f"\n{SEP}")
 
-        # ── Para mañana o próximas 48hrs (si no hay urgentes)
+        # ── Próximas 48hrs (si no hay urgentes)
         if not has_urgent and proximas_48:
-            lines.append(f"⏰ <b>Para los próximos días:</b>")
+            any_section = True
+            lines.append(f"\n⏰ <b>En el radar — próximos 2 días</b>")
             for t in proximas_48[:3]:
-                tg = telegrams_str(t)
+                tg = tg_str(t)
                 d = days_until(t)
                 cuando = "mañana" if d == 1 else (f"en {d} días" if d > 1 else "hoy")
-                lines.append(f"  • <i>{t.get('name','')}</i> — vence {cuando} {tg}")
-            lines.append("")
+                lines.append(f"\n  📌 <i>{t.get('name','')}</i>")
+                lines.append(f"  📆 vence {cuando}  |  � {tg}")
+            lines.append(f"\n{SEP}")
 
-        # ── Cierre limpio
-        if not has_urgent and not proximas_48:
-            lines.append(f"{EMOJIS['trophy']} <b>¡Día limpio, estrellitas!</b> Sin urgencias. ¡Eso se celebra! 🎉")
+        # ── GAMING: scoreboard del día
+        lines.append(f"\n🎮 <b>Scoreboard del día</b>")
+        all_closed_today = [t for t in all_tasks if t.get("status", {}).get("status", "").lower() == "vobo edgar"]
+        if all_closed_today:
+            lines.append(f"  🏆 Tareas cerradas hoy: {len(all_closed_today)}")
+
+        # Puntos por persona: sin vencidas = estrella, con vencidas = advertencia
+        for uid, info in USER_MAP.items():
+            person_tasks = [t for t in active_tasks if any(str(a.get("id")) == uid for a in t.get("assignees", []))]
+            person_vencidas = [t for t in person_tasks if days_until(t) is not None and days_until(t) < 0]
+            if not person_tasks:
+                continue
+            if not person_vencidas:
+                lines.append(f"  ⭐ {info['telegram']} — ¡sin vencidas! Sigue brillando")
+            else:
+                lines.append(f"  💪 {info['telegram']} — {len(person_vencidas)} pendiente(s), ¡tú puedes!")
+
+        if not has_urgent:
+            lines.append(f"\n  🎉 <b>¡Día limpio, estrellitas!</b> Sin urgencias hoy.")
+
+        lines.append(f"\n{SEP}")
 
         closings = [
             "¡Descansen y recarguen su brillo, estrellitas! 🌙✨",
