@@ -2,56 +2,33 @@ name: ASORT PM Bot
 
 on:
   schedule:
-    # Reporte mañanero: 9:30 AM CDMX (UTC-6) = 15:30 UTC
-    - cron: '30 15 * * 1-5'
-    # Check-in de cierre: 6:00 PM CDMX = 00:00 UTC (día siguiente)
-    - cron: '0 0 * * 2-6'
-  
-  # Permite correr manualmente para pruebas
+    # Cierre del día: 5:30 PM CDMX (UTC-6) = 23:30 UTC
+    - cron: '30 23 * * 1-5'
+
   workflow_dispatch:
     inputs:
       report_type:
         description: 'Tipo de reporte'
         required: true
-        default: 'morning'
+        default: 'evening'
         type: choice
         options:
-          - morning
           - evening
           - test
 
 jobs:
   send-report:
     runs-on: ubuntu-latest
-    
+
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      
-      - name: Install dependencies
-        run: |
-          pip install requests
-      
-      - name: Determine report type
-        id: report-type
-        run: |
-          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            echo "type=${{ github.event.inputs.report_type }}" >> $GITHUB_OUTPUT
-          else
-            # Determinar por hora UTC
-            HOUR=$(date -u +%H)
-            if [ "$HOUR" == "15" ]; then
-              echo "type=morning" >> $GITHUB_OUTPUT
-            else
-              echo "type=evening" >> $GITHUB_OUTPUT
-            fi
-          fi
-      
+
+      - run: pip install requests
+
       - name: Run PM Bot
         env:
           CLICKUP_API_TOKEN: ${{ secrets.CLICKUP_API_TOKEN }}
@@ -59,4 +36,5 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
         run: |
-          python bot.py ${{ steps.report-type.outputs.type }}
+          TYPE=${{ github.event.inputs.report_type || 'evening' }}
+          python bot.py $TYPE
