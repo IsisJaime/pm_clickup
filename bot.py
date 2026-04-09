@@ -302,6 +302,28 @@ que ha completado {completed_count} tareas a tiempo. Sé genuino, no cursi. Sin 
             print(f"Error with Groq AI: {e}")
             return f"¡Buen trabajo {team_member}!"
 
+    def generate_motivation_blocker(self, task_name: str, assignee: str) -> str:
+        """Pregunta motivacional sobre blockers para tareas vencidas"""
+        prompt = f"""Eres el PM del equipo AIT de Banco Azteca.
+La tarea "{task_name}" está vencida. Genera UNA pregunta corta y empática en español casual dirigida a {assignee if assignee else 'el equipo'} para saber si hay algún blocker o en qué necesitan apoyo. Máximo 1 oración. Sin emojis."""
+        try:
+            response = requests.post(
+                self.BASE_URL,
+                headers=self.headers,
+                json={
+                    "model": "llama-3.1-8b-instant",
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": 60,
+                    "temperature": 0.8
+                },
+                timeout=10
+            )
+            response.raise_for_status()
+            return response.json()["choices"][0]["message"]["content"].strip()
+        except Exception as e:
+            print(f"Error with Groq blocker: {e}")
+            return "¿Hay algo que les esté bloqueando o en qué podemos apoyar?"
+
     def suggest_escalation(self, task_name: str, days_overdue: int) -> str:
         """Genera tácticas para acercarse al gerente/revisor por una tarea vencida"""
         prompt = f"""Eres un coach de comunicación profesional para el equipo AIT de Banco Azteca.
@@ -667,7 +689,7 @@ class PMReporter:
                 lines.append(f"    👉 {tg} ¿Ya tienen todo listo? ¿Ya se le notificó a Edgar?")
             lines.append("")
 
-        # ── ESPERANDO REVISIÓN: si ya pasó o está cerca, preguntar si ya se contactó
+        # ── ESPERANDO REVISIÓN: si ya pasó o está cerca, preguntar si ya se contactó + tácticas
         esp_urgentes = [t for t in esp_revision if days_until(t) is not None and days_until(t) <= 2]
         if esp_urgentes:
             lines.append(f"🟠 <b>Esperando revisión — ¿ya nos acercamos?</b>")
@@ -677,21 +699,24 @@ class PMReporter:
                 cuando = "VENCIDA" if d < 0 else ("vence HOY" if d == 0 else "vence mañana")
                 lines.append(f"  • <i>{t.get('name','')}</i> ({cuando}) {tg}")
                 lines.append(f"    👉 {tg} ¿Ya se contactó a la persona que debe revisar esto?")
+                # Tácticas de escalación con Groq
+                if self.ai:
+                    tactics = self.ai.suggest_escalation(t.get('name',''), abs(d) if d < 0 else 0)
+                    if tactics:
+                        lines.append(f"    💡 <i>{tactics}</i>")
             lines.append("")
 
-        # ── VENCIDAS: recordatorio diario + tácticas de Groq (hasta 7 días)
+        # ── VENCIDAS: recordatorio diario + pregunta motivacional con Groq
         if vencidas:
             lines.append(f"⚠️ <b>Vencidas — seguimiento diario</b>")
             for t in vencidas[:4]:
                 tg = telegrams_str(t)
                 d = abs(days_until(t))
                 lines.append(f"  • <i>{t.get('name','')}</i> — {d} día(s) vencida {tg}")
-
-                # Tácticas de escalación con Groq (solo si llevan ≤7 días)
-                if d <= 7 and self.ai:
-                    tactics = self.ai.suggest_escalation(t.get('name',''), d)
-                    if tactics:
-                        lines.append(f"    💡 <i>{tactics}</i>")
+                if self.ai:
+                    motivation = self.ai.generate_motivation_blocker(t.get('name',''), tg)
+                    if motivation:
+                        lines.append(f"    � <i>{motivation}</i>")
             lines.append("")
 
         # ── Para mañana o próximas 48hrs (si no hay urgentes)
