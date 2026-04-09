@@ -731,11 +731,15 @@ class PMReporter:
 
     def send_evening_report(self):
         """Envía el check-in de la tarde"""
+        print(f"🔄 Generando reporte de cierre...")
         result = self.generate_evening_report()
         if result:
             text, gif_url = result
+            print(f"📝 Reporte generado ({len(text)} chars)")
+            print(f"🎬 Enviando GIF: {gif_url}")
             self.telegram.send_gif(TELEGRAM_CHAT_ID, gif_url)
-            self.telegram.send_message(TELEGRAM_CHAT_ID, text)
+            for chunk in [text[i:i+4000] for i in range(0, len(text), 4000)]:
+                self.telegram.send_message(TELEGRAM_CHAT_ID, chunk)
             print("✅ Evening report sent!")
         else:
             print("⚠️ Error generating evening report")
