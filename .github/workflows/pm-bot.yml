@@ -3,7 +3,7 @@ name: ASORT PM Bot
 on:
   schedule:
     # 6:30 PM CDMX (UTC-6) = 12:00 UTC
-    - cron: '30 0 * * 2-6'
+    - cron: '30 23 * * 1-5'
 
   workflow_dispatch:
     inputs:
