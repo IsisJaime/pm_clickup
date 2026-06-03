@@ -1,6 +1,6 @@
 # 🤖 ASORT PM Bot
 
-Bot de Project Management para el equipo AIT de Grupo Salinas.
+Bot de Project Management para el equipo AIT.
 
 ## ✨ Funcionalidades
 
